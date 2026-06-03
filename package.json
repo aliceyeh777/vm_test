@@ -1,0 +1,20 @@
+{
+  "name": "mock-jihan-server",
+  "version": "1.0.0",
+  "description": "Mock server simulating sv.jihan-pi.jp / ws.jihan-pi.jp for EW-7712ACL dev/test",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^9.4.3",
+    "dotenv": "^16.4.1",
+    "express": "^4.18.2",
+    "uuid": "^9.0.0",
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}

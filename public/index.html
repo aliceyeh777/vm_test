@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>Mock Jihan Server — Control Panel</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: monospace; background: #1a1a2e; color: #e0e0e0; padding: 20px; }
+  h1 { color: #00d4ff; margin-bottom: 20px; }
+  h2 { color: #aaa; font-size: 14px; margin: 16px 0 8px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .card { background: #16213e; border: 1px solid #0f3460; border-radius: 8px; padding: 16px; }
+  select, input { background: #0f3460; border: 1px solid #00d4ff; color: #e0e0e0;
+    padding: 6px 10px; border-radius: 4px; font-family: monospace; width: 100%; margin-bottom: 8px; }
+  button { background: #00d4ff; color: #1a1a2e; border: none; padding: 8px 16px;
+    border-radius: 4px; cursor: pointer; font-weight: bold; font-family: monospace; }
+  button:hover { background: #00b4d8; }
+  button.danger { background: #e63946; color: white; }
+  button.warn  { background: #f4a261; color: #1a1a2e; }
+  .log-box { background: #0f0f1a; border: 1px solid #333; border-radius: 4px;
+    padding: 10px; height: 280px; overflow-y: auto; font-size: 12px; line-height: 1.6; }
+  .log-box .recv { color: #90ee90; }
+  .log-box .send { color: #87ceeb; }
+  .log-box .api  { color: #ffd700; }
+  .tag { display: inline-block; padding: 1px 6px; border-radius: 3px;
+    font-size: 11px; margin-right: 4px; }
+  .tag.recv { background: #1a4a1a; color: #90ee90; }
+  .tag.send { background: #1a2a4a; color: #87ceeb; }
+  .tag.api  { background: #4a3a00; color: #ffd700; }
+  #terminals-list { font-size: 13px; }
+  .terminal-row { display: flex; align-items: center; gap: 8px; margin: 4px 0;
+    background: #0f3460; padding: 6px 10px; border-radius: 4px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #00ff88; }
+  .dot.off { background: #555; }
+  .btn-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+</style>
+</head>
+<body>
+<h1>🛰 Mock Jihan Server — Control Panel</h1>
+
+<div class="grid">
+  <!-- Left: Push Commands -->
+  <div class="card">
+    <h2>Push WS Command to Terminal</h2>
+    <select id="imei-select"><option value="">— select terminal —</option></select>
+    <div class="btn-row">
+      <button onclick="push('status_request')">status_request</button>
+      <button onclick="push('log_start_request')">log_start</button>
+      <button onclick="push('log_stop_request')">log_stop</button>
+      <button onclick="push('clear_request')" class="warn">clear_request</button>
+      <button onclick="push('reboot_request')" class="danger">reboot</button>
+      <button onclick="push('firmware_update')" class="warn">firmware_update</button>
+      <button onclick="pushBuzzer()">buzzer</button>
+      <button onclick="pushPaymentConfirm()">payment_confirm</button>
+    </div>
+    <h2 style="margin-top:12px">Custom JSON Payload</h2>
+    <textarea id="custom-payload" style="width:100%;height:60px;background:#0f3460;color:#e0e0e0;
+      border:1px solid #00d4ff;border-radius:4px;padding:6px;font-family:monospace;font-size:12px"
+      placeholder='{"type":"status_request"}'></textarea>
+    <button onclick="pushCustom()" style="margin-top:4px">Send Custom</button>
+
+    <h2 style="margin-top:16px">Connected Terminals</h2>
+    <div id="terminals-list">Loading...</div>
+    <button onclick="refreshTerminals()" style="margin-top:8px;font-size:12px">Refresh</button>
+  </div>
+
+  <!-- Right: Logs -->
+  <div class="card">
+    <h2>Live Log  <button onclick="clearLog()" style="font-size:11px;padding:2px 8px">Clear</button>
+      <button onclick="refreshAll()" style="font-size:11px;padding:2px 8px;margin-left:4px">↻ Refresh</button>
+    </h2>
+    <div class="log-box" id="log-box"></div>
+  </div>
+</div>
+
+<!-- HTTPS API Log -->
+<div class="card" style="margin-top:16px">
+  <h2>HTTPS API Log (latest 50)</h2>
+  <div class="log-box" id="api-log-box"></div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+async function fetchJSON(url, opts) {
+  const r = await fetch(url, opts);
+  return r.json();
+}
+
+// ── Terminals ─────────────────────────────────────────────────────────────────
+async function refreshTerminals() {
+  const [live, all] = await Promise.all([
+    fetchJSON('/ctrl/terminals'),
+    fetchJSON('/ctrl/terminals/all'),
+  ]);
+  const sel = $('imei-select');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">— select terminal —</option>';
+  live.forEach(imei => {
+    const opt = document.createElement('option');
+    opt.value = imei;
+    opt.textContent = imei;
+    sel.appendChild(opt);
+  });
+  if (prev) sel.value = prev;
+
+  const list = $('terminals-list');
+  if (all.length === 0) { list.textContent = 'No terminals registered yet.'; return; }
+  list.innerHTML = all.map(t => `
+    <div class="terminal-row">
+      <div class="dot ${live.includes(t.imei) ? '' : 'off'}"></div>
+      <span>${t.imei}</span>
+      <span style="color:#888;font-size:11px">last seen: ${t.last_seen || '-'}</span>
+    </div>`).join('');
+}
+
+// ── WS Push ───────────────────────────────────────────────────────────────────
+function getSelectedImei() {
+  const v = $('imei-select').value;
+  if (!v) { alert('Please select a terminal first.'); return null; }
+  return v;
+}
+
+async function push(type, extra = {}) {
+  const imei = getSelectedImei();
+  if (!imei) return;
+  const res = await fetchJSON('/ctrl/push', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ imei, type, ...extra }),
+  });
+  appendLog('send', type, { imei, type, ...extra });
+  console.log('push result:', res);
+}
+
+function pushBuzzer() {
+  const id = prompt('Buzzer pattern ID (1=short, 2=long, 3=double, 4=triple):', '1');
+  if (!id) return;
+  push('buzzer_request', { buzzer: parseInt(id) });
+}
+
+function pushPaymentConfirm() {
+  const payment_id = prompt('payment_id:', `PAY${Date.now()}`);
+  if (!payment_id) return;
+  push('payment_confirm_request', { payment_id, result: 0, method: 'nfc', brand: 'G+' });
+}
+
+async function pushCustom() {
+  const imei = getSelectedImei();
+  if (!imei) return;
+  let payload;
+  try { payload = JSON.parse($('custom-payload').value); }
+  catch { alert('Invalid JSON'); return; }
+  const { type, ...extra } = payload;
+  if (!type) { alert('JSON must have a "type" field'); return; }
+  await push(type, extra);
+}
+
+// ── Logs ──────────────────────────────────────────────────────────────────────
+function appendLog(direction, type, payload) {
+  const box = $('log-box');
+  const ts = new Date().toLocaleTimeString();
+  const line = document.createElement('div');
+  line.innerHTML = `<span style="color:#555">${ts}</span> <span class="tag ${direction}">${direction.toUpperCase()}</span> <b>${type}</b> ${JSON.stringify(payload)}`;
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+}
+
+function clearLog() { $('log-box').innerHTML = ''; }
+
+async function refreshApiLog() {
+  const logs = await fetchJSON('/ctrl/logs?limit=50');
+  const box = $('api-log-box');
+  box.innerHTML = logs.map(l => {
+    const res = JSON.parse(l.response_body || '{}');
+    return `<div class="api"><span style="color:#555">${l.created_at}</span> `+
+      `<span class="tag api">API</span> <b>${l.api_name}</b> ${l.imei} `+
+      `→ ${JSON.stringify(res)}</div>`;
+  }).join('');
+}
+
+async function refreshWsLog() {
+  const msgs = await fetchJSON('/ctrl/ws-messages?limit=50');
+  const box = $('log-box');
+  box.innerHTML = msgs.reverse().map(m =>
+    `<div><span style="color:#555">${m.created_at}</span> `+
+    `<span class="tag ${m.direction}">${m.direction.toUpperCase()}</span> `+
+    `<b>${m.type}</b> ${m.imei} ${m.payload}</div>`
+  ).join('');
+}
+
+async function refreshAll() {
+  await Promise.all([refreshTerminals(), refreshApiLog(), refreshWsLog()]);
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+refreshAll();
+setInterval(refreshAll, 5000);
+</script>
+</body>
+</html>
