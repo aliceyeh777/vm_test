@@ -36,7 +36,10 @@
     background: #0f3460; padding: 6px 10px; border-radius: 4px; }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: #00ff88; }
   .dot.off { background: #555; }
-  .btn-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .btn-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .group-label { font-size: 11px; color: #5599cc; text-transform: uppercase;
+    letter-spacing: 1px; margin-top: 14px; margin-bottom: 2px;
+    border-bottom: 1px solid #1a3a5a; padding-bottom: 3px; }
 </style>
 </head>
 <body>
@@ -46,30 +49,51 @@
 <div class="grid">
   <!-- Left: Push Commands -->
   <div class="card">
-    <h2>Push WS Command to Terminal</h2>
+    <h2>選擇裝置</h2>
     <select id="imei-select"><option value="">— select terminal —</option></select>
+
+    <!-- 系統控制 -->
+    <div class="group-label">系統控制</div>
     <div class="btn-row">
       <button onclick="push('status_request')">status_request</button>
+      <button onclick="push('reboot_request')" class="danger">reboot</button>
+      <button onclick="push('clear_request')" class="warn">clear_request</button>
+    </div>
+
+    <!-- Log -->
+    <div class="group-label">Log</div>
+    <div class="btn-row">
       <button onclick="push('log_start_request')">log_start</button>
       <button onclick="push('log_stop_request')">log_stop</button>
-      <button onclick="push('clear_request')" class="warn">clear_request</button>
-      <button onclick="push('reboot_request')" class="danger">reboot</button>
+    </div>
+
+    <!-- 韌體 / 硬體測試 -->
+    <div class="group-label">韌體 / 硬體</div>
+    <div class="btn-row">
       <button onclick="push('firmware_update')" class="warn">firmware_update</button>
       <button onclick="pushBuzzer()">buzzer</button>
-      <button onclick="pushPaymentConfirm()">payment_confirm</button>
-      <button onclick="setConfirmReject('reject')" class="danger" title="下一筆 confirm API 回 402，裝置走取消流程">confirm_reject (402)</button>
-      <button onclick="setConfirmReject('conflict')" class="warn" title="下一筆 confirm API 回 409，裝置重試">confirm_conflict (409)</button>
     </div>
-    <div id="pending-confirm-info" style="margin-top:8px;font-size:12px;color:#aaa;min-height:18px"></div>
 
-    <h2 style="margin-top:16px">Connected Terminals</h2>
+    <!-- 交易 -->
+    <div class="group-label">交易</div>
+    <div class="btn-row">
+      <button onclick="pushPaymentConfirm()">payment_confirm</button>
+      <button onclick="setConfirmReject('reject')" class="danger">confirm_reject (402)</button>
+      <button onclick="setConfirmReject('conflict')" class="warn">confirm_conflict (409)</button>
+    </div>
+    <div id="pending-confirm-info" style="margin-top:6px;font-size:12px;color:#aaa;min-height:18px"></div>
+
+    <!-- Connected Terminals -->
+    <div class="group-label" style="margin-top:12px">Connected Terminals
+      <button onclick="refreshTerminals()" style="font-size:11px;padding:2px 8px;margin-left:6px">↻</button>
+    </div>
     <div id="terminals-list">Loading...</div>
-    <button onclick="refreshTerminals()" style="margin-top:8px;font-size:12px">Refresh</button>
   </div>
 
   <!-- Right: Logs -->
   <div class="card">
-    <h2>Live Log  <button onclick="clearLog()" style="font-size:11px;padding:2px 8px">Clear</button>
+    <h2>Live Log
+      <button onclick="clearLog()" style="font-size:11px;padding:2px 8px;margin-left:6px">Clear</button>
       <button onclick="refreshAll()" style="font-size:11px;padding:2px 8px;margin-left:4px">↻ Refresh</button>
     </h2>
     <div class="log-box" id="log-box"></div>
