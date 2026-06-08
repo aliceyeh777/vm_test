@@ -245,31 +245,52 @@ function initSSE() {
 
 function showConfirmBanner(imei, paymentId, column, price) {
   const banner = document.getElementById('confirm-banner');
+  const btn = (label, color, onclick) =>
+    `<button onclick="${onclick}"
+      style="background:${color};color:#1a1a2e;border:none;padding:5px 14px;
+             border-radius:4px;cursor:pointer;font-weight:bold;margin-left:6px">
+      ${label}
+    </button>`;
+
   banner.innerHTML = `
-    <b>🔔 商品選擇收到！</b>
-    IMEI: ${imei} &nbsp;|&nbsp; col: ${column} &nbsp;|&nbsp; price: ${price} &nbsp;|&nbsp; payment_id: ${paymentId}
-    &nbsp;&nbsp;
-    <button onclick="quickConfirm('${imei}','${paymentId}')"
-      style="background:#00d4ff;color:#1a1a2e;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-weight:bold">
-      立即送出 payment_confirm ▶
-    </button>
-    <button onclick="this.parentElement.style.display='none'"
-      style="background:transparent;color:#aaa;border:none;cursor:pointer;margin-left:8px">✕</button>
+    <b>🔔 商品選擇收到！</b> &nbsp;
+    IMEI: <b>${imei}</b> &nbsp;|&nbsp;
+    col: <b>${column}</b> &nbsp;|&nbsp;
+    price: <b>${price}</b> &nbsp;|&nbsp;
+    payment_id: <b>${paymentId}</b>
+    <div style="margin-top:8px">
+      ${btn('✅ 刷卡成功 (confirm)', '#00d4ff', `quickAction('${imei}','${paymentId}','confirm')`)}
+      ${btn('❌ 拒卡 (402)', '#e63946',        `quickAction('${imei}','${paymentId}','reject')`)}
+      ${btn('⚠️ 衝突重試 (409)', '#f4a261',    `quickAction('${imei}','${paymentId}','conflict')`)}
+      <button onclick="$('confirm-banner').style.display='none'"
+        style="background:transparent;color:#aaa;border:none;cursor:pointer;margin-left:12px">✕ 忽略</button>
+    </div>
   `;
   banner.style.display = 'block';
-  // Auto-hide after 30 seconds if not clicked
   clearTimeout(banner._timer);
   banner._timer = setTimeout(() => { banner.style.display = 'none'; }, 30000);
 }
 
-async function quickConfirm(imei, paymentId) {
-  const res = await fetchJSON('/ctrl/push', {
+async function quickAction(imei, paymentId, action) {
+  $('confirm-banner').style.display = 'none';
+
+  if (action !== 'confirm') {
+    // Set reject mode first, then push payment_confirm_request
+    await fetchJSON('/ctrl/confirm-reject', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imei, mode: action }),
+    });
+    appendLog('send', `confirm → ${action}`, { imei, payment_id: paymentId });
+  }
+
+  // Push payment_confirm_request via WS (triggers device to call confirm API)
+  await fetchJSON('/ctrl/push', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ imei, type: 'payment_confirm_request', payment_id: paymentId }),
   });
   appendLog('send', 'payment_confirm_request', { imei, payment_id: paymentId });
-  $('confirm-banner').style.display = 'none';
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
