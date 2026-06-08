@@ -3,14 +3,31 @@ const { logWs } = require('../db');
 // imei → WebSocket client
 const clients = new Map();
 
+function extractTerminalId(req) {
+  const raw = req.url || '';
+  // Use regex to handle both relative (/?terminal_id=X) and absolute (wss://host/?terminal_id=X)
+  // Also handles cases where Railway proxy may modify URL format
+  const m = raw.match(/[?&]terminal_id=([^&\s]+)/);
+  if (m) return decodeURIComponent(m[1]);
+
+  // Fallback: try standard URL parsing
+  try {
+    const base = raw.startsWith('http') ? raw : `http://x${raw}`;
+    const u = new URL(base);
+    const tid = u.searchParams.get('terminal_id');
+    if (tid) return tid;
+  } catch {}
+
+  return 'unknown';
+}
+
 function init(wss) {
   wss.on('connection', (ws, req) => {
     // Real device connects: GET wss://host/?terminal_id=IMEI&token=TOKEN
-    const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
-    let imei = url.searchParams.get('terminal_id') || 'unknown';
-    const token = url.searchParams.get('token') || '';
+    let imei = extractTerminalId(req);
 
-    console.log(`[WS] Connected: ${imei} (${req.socket.remoteAddress})`);
+    // Debug: log raw URL so we can diagnose Railway proxy behavior
+    console.log(`[WS] Connected: imei=${imei}  url=${req.url}  host=${req.headers.host}`);
     clients.set(imei, ws);
 
     ws.on('message', (data, isBinary) => {
