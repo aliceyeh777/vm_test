@@ -108,6 +108,16 @@ const server = http.createServer(app);
 
 // WebSocket server shares the same HTTP server (same port)
 const wss = new WebSocketServer({ server });
+
+// Railway's proxy normalizes header names to Title-Case:
+//   upgrade: websocket  →  Upgrade: websocket
+// The firmware checks with case-sensitive strstr("upgrade: websocket").
+// Fix: inject a custom header whose VALUE contains the exact string the
+// firmware looks for. Railway preserves header values, only title-cases names.
+wss.on('headers', (headers) => {
+  headers.push('X-WS-Compat: upgrade: websocket');
+});
+
 wsHandler.init(wss);
 
 server.listen(PORT, () => {
