@@ -3,6 +3,7 @@ const http = require('http');
 const express = require('express');
 const { WebSocketServer } = require('ws');
 const path = require('path');
+const { execSync } = require('child_process');
 
 const { getRecentLogs, getRecentWsMessages, getAllTerminals } = require('./db');
 const routes = require('./routes');
@@ -12,6 +13,21 @@ const confirmRoute = require('./routes/confirm');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// ─── Version info ─────────────────────────────────────────────────────────────
+function getVersion() {
+  // Railway injects RAILWAY_GIT_COMMIT_SHA automatically
+  const sha = process.env.RAILWAY_GIT_COMMIT_SHA;
+  if (sha) return sha.slice(0, 7);
+  try {
+    return execSync('git rev-parse --short HEAD').toString().trim();
+  } catch {
+    return 'unknown';
+  }
+}
+const VERSION = getVersion();
+const DEPLOY_TIME = new Date().toISOString();
+console.log(`Version: ${VERSION}  deployed: ${DEPLOY_TIME}`);
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -57,6 +73,11 @@ app.get('/ctrl/logs', (req, res) => {
 app.get('/ctrl/ws-messages', (req, res) => {
   const limit = parseInt(req.query.limit) || 100;
   res.json(getRecentWsMessages(limit));
+});
+
+// Version info
+app.get('/ctrl/version', (_req, res) => {
+  res.json({ version: VERSION, deploy_time: DEPLOY_TIME });
 });
 
 // Latest product selection per terminal (for payment_confirm button)
