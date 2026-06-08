@@ -32,6 +32,16 @@ console.log(`Version: ${VERSION}  deployed: ${DEPLOY_TIME}`);
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// SIM7500 sends "Connection: Keep-Alive" and expects the TCP connection to stay
+// open until it explicitly sends AT+CHTTPSCLSE. Railway's proxy closes connections
+// eagerly after each response, causing +CHTTPSNOTIFY: PEER CLOSED before the
+// device can close cleanly. Explicitly advertising keep-alive may help.
+app.use((req, res, next) => {
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('Keep-Alive', 'timeout=30, max=10');
+  next();
+});
+
 // ─── HTTPS Mock APIs ─────────────────────────────────────────────────────────
 app.use('/api/v1/terminal', routes);
 
