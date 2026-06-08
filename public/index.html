@@ -299,10 +299,7 @@ function showConfirmBanner(imei, paymentId, column, price) {
 }
 
 async function quickAction(imei, paymentId, action) {
-  $('confirm-banner').style.display = 'none';
-
   if (action !== 'confirm') {
-    // Set reject mode first, then push payment_confirm_request
     await fetchJSON('/ctrl/confirm-reject', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -311,12 +308,38 @@ async function quickAction(imei, paymentId, action) {
     appendLog('send', `confirm → ${action}`, { imei, payment_id: paymentId });
   }
 
-  // Push payment_confirm_request via WS (triggers device to call confirm API)
-  await fetchJSON('/ctrl/push', {
+  // Push payment_confirm_request via WS
+  const res = await fetchJSON('/ctrl/push', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ imei, type: 'payment_confirm_request', payment_id: paymentId }),
   });
+
+  if (!res.ok) {
+    // Push failed: terminal not connected via WS
+    const live = await fetchJSON('/ctrl/terminals');
+    const banner = $('confirm-banner');
+    banner.innerHTML = `
+      <b style="color:#e63946">❌ 推送失敗！</b> &nbsp;
+      IMEI <b>${imei}</b> 不在 WS 連線清單中。<br>
+      <span style="font-size:12px;color:#aaa">
+        目前連線的 IMEI: <b>${live.length ? live.join(', ') : '（無）'}</b>
+      </span><br>
+      <div style="margin-top:6px">
+        ${live.map(id => `<button onclick="quickAction('${id}','${paymentId}','${action}')"
+          style="background:#00d4ff;color:#1a1a2e;border:none;padding:4px 10px;
+                 border-radius:4px;cursor:pointer;margin-right:6px">
+          改用 ${id} 重送
+        </button>`).join('')}
+        <button onclick="$('confirm-banner').style.display='none'"
+          style="background:transparent;color:#aaa;border:none;cursor:pointer">✕</button>
+      </div>`;
+    banner.style.display = 'block';
+    appendLog('send', '❌ push FAILED', { imei, live });
+    return;
+  }
+
+  $('confirm-banner').style.display = 'none';
   appendLog('send', 'payment_confirm_request', { imei, payment_id: paymentId });
 }
 
