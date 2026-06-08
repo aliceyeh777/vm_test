@@ -96,10 +96,12 @@ async function refreshTerminals() {
   const sel = $('imei-select');
   const prev = sel.value;
   sel.innerHTML = '<option value="">— select terminal —</option>';
-  live.forEach(imei => {
+  // 所有曾出現過的裝置都列入選單（WS 未連線的標記 offline）
+  all.forEach(t => {
     const opt = document.createElement('option');
-    opt.value = imei;
-    opt.textContent = imei;
+    opt.value = t.imei;
+    opt.textContent = live.includes(t.imei) ? t.imei : `${t.imei} (offline)`;
+    if (!live.includes(t.imei)) opt.style.color = '#888';
     sel.appendChild(opt);
   });
   if (prev) sel.value = prev;
