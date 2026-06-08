@@ -7,6 +7,7 @@ const path = require('path');
 const { getRecentLogs, getRecentWsMessages, getAllTerminals } = require('./db');
 const routes = require('./routes');
 const wsHandler = require('./ws/handler');
+const productRoute = require('./routes/product');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -55,6 +56,11 @@ app.get('/ctrl/logs', (req, res) => {
 app.get('/ctrl/ws-messages', (req, res) => {
   const limit = parseInt(req.query.limit) || 100;
   res.json(getRecentWsMessages(limit));
+});
+
+// Latest product selection per terminal (for payment_confirm button)
+app.get('/ctrl/latest-products', (_req, res) => {
+  res.json(productRoute.getAllLatestProducts());
 });
 
 // ─── Server ──────────────────────────────────────────────────────────────────

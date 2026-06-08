@@ -53,11 +53,7 @@
       <button onclick="pushBuzzer()">buzzer</button>
       <button onclick="pushPaymentConfirm()">payment_confirm</button>
     </div>
-    <h2 style="margin-top:12px">Custom JSON Payload</h2>
-    <textarea id="custom-payload" style="width:100%;height:60px;background:#0f3460;color:#e0e0e0;
-      border:1px solid #00d4ff;border-radius:4px;padding:6px;font-family:monospace;font-size:12px"
-      placeholder='{"type":"status_request"}'></textarea>
-    <button onclick="pushCustom()" style="margin-top:4px">Send Custom</button>
+    <div id="pending-confirm-info" style="margin-top:8px;font-size:12px;color:#aaa;min-height:18px"></div>
 
     <h2 style="margin-top:16px">Connected Terminals</h2>
     <div id="terminals-list">Loading...</div>
@@ -89,9 +85,10 @@ async function fetchJSON(url, opts) {
 
 // ── Terminals ─────────────────────────────────────────────────────────────────
 async function refreshTerminals() {
-  const [live, all] = await Promise.all([
+  const [live, all, products] = await Promise.all([
     fetchJSON('/ctrl/terminals'),
     fetchJSON('/ctrl/terminals/all'),
+    fetchJSON('/ctrl/latest-products'),
   ]);
   const sel = $('imei-select');
   const prev = sel.value;
@@ -105,6 +102,13 @@ async function refreshTerminals() {
     sel.appendChild(opt);
   });
   if (prev) sel.value = prev;
+
+  // Show pending payment_confirm info for selected terminal
+  const selectedImei = $('imei-select').value || prev;
+  const pending = products[selectedImei];
+  $('pending-confirm-info').textContent = pending
+    ? `⏳ 待確認: payment_id=${pending.payment_id}  col=${pending.column}  price=${pending.price}`
+    : '';
 
   const list = $('terminals-list');
   if (all.length === 0) { list.textContent = 'No terminals registered yet.'; return; }
@@ -141,21 +145,24 @@ function pushBuzzer() {
   push('buzzer_request', { buzzer: parseInt(id) });
 }
 
-function pushPaymentConfirm() {
-  const payment_id = prompt('payment_id:', `PAY${Date.now()}`);
-  if (!payment_id) return;
-  push('payment_confirm_request', { payment_id, result: 0, method: 'nfc', brand: 'G+' });
-}
-
-async function pushCustom() {
+async function pushPaymentConfirm() {
   const imei = getSelectedImei();
   if (!imei) return;
-  let payload;
-  try { payload = JSON.parse($('custom-payload').value); }
-  catch { alert('Invalid JSON'); return; }
-  const { type, ...extra } = payload;
-  if (!type) { alert('JSON must have a "type" field'); return; }
-  await push(type, extra);
+
+  // Try to get payment_id from latest product API call
+  const products = await fetchJSON('/ctrl/latest-products');
+  const latest = products[imei];
+
+  let payment_id;
+  if (latest) {
+    payment_id = latest.payment_id;
+    $('pending-confirm-info').textContent = '';
+  } else {
+    payment_id = prompt('找不到待確認交易，請手動輸入 payment_id:');
+    if (!payment_id) return;
+  }
+
+  push('payment_confirm_request', { payment_id });
 }
 
 // ── Logs ──────────────────────────────────────────────────────────────────────
