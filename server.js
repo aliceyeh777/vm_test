@@ -8,6 +8,7 @@ const { getRecentLogs, getRecentWsMessages, getAllTerminals } = require('./db');
 const routes = require('./routes');
 const wsHandler = require('./ws/handler');
 const productRoute = require('./routes/product');
+const confirmRoute = require('./routes/confirm');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -61,6 +62,21 @@ app.get('/ctrl/ws-messages', (req, res) => {
 // Latest product selection per terminal (for payment_confirm button)
 app.get('/ctrl/latest-products', (_req, res) => {
   res.json(productRoute.getAllLatestProducts());
+});
+
+// Set next confirm response to reject (one-shot per terminal)
+// mode: 'reject'=402 payment declined, 'conflict'=409 retry
+app.post('/ctrl/confirm-reject', (req, res) => {
+  const { imei, mode } = req.body || {};
+  if (!imei) return res.status(400).json({ error: 'imei required' });
+  confirmRoute.setRejectNext(imei, mode || 'reject');
+  console.log(`[CTRL] Next confirm for ${imei} will be rejected (${mode || 'reject'})`);
+  res.json({ ok: true, imei, mode: mode || 'reject' });
+});
+
+// Get current reject mode for a terminal
+app.get('/ctrl/confirm-reject/:imei', (req, res) => {
+  res.json({ mode: confirmRoute.getRejectMode(req.params.imei) });
 });
 
 // ─── SSE: real-time events to browser ────────────────────────────────────────

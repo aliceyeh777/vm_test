@@ -57,6 +57,8 @@
       <button onclick="push('firmware_update')" class="warn">firmware_update</button>
       <button onclick="pushBuzzer()">buzzer</button>
       <button onclick="pushPaymentConfirm()">payment_confirm</button>
+      <button onclick="setConfirmReject('reject')" class="danger" title="下一筆 confirm API 回 402，裝置走取消流程">confirm_reject (402)</button>
+      <button onclick="setConfirmReject('conflict')" class="warn" title="下一筆 confirm API 回 409，裝置重試">confirm_conflict (409)</button>
     </div>
     <div id="pending-confirm-info" style="margin-top:8px;font-size:12px;color:#aaa;min-height:18px"></div>
 
@@ -148,6 +150,19 @@ function pushBuzzer() {
   const id = prompt('Buzzer pattern ID (1=short, 2=long, 3=double, 4=triple):', '1');
   if (!id) return;
   push('buzzer_request', { buzzer: parseInt(id) });
+}
+
+async function setConfirmReject(mode) {
+  const imei = getSelectedImei();
+  if (!imei) return;
+  await fetchJSON('/ctrl/confirm-reject', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ imei, mode }),
+  });
+  const label = mode === 'conflict' ? '409 conflict（裝置會重試）' : '402 declined（裝置走取消）';
+  appendLog('send', `next confirm → ${label}`, { imei });
+  alert(`設定完成：${imei} 下一筆 confirm 將回 ${label}`);
 }
 
 async function pushPaymentConfirm() {
