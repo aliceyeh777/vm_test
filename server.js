@@ -63,6 +63,30 @@ app.get('/ctrl/latest-products', (_req, res) => {
   res.json(productRoute.getAllLatestProducts());
 });
 
+// ─── SSE: real-time events to browser ────────────────────────────────────────
+const sseClients = new Set();
+
+app.get('/ctrl/events', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+  res.write('data: {"type":"connected"}\n\n');
+
+  sseClients.add(res);
+  req.on('close', () => sseClients.delete(res));
+});
+
+function sseEmit(eventType, data) {
+  const payload = `data: ${JSON.stringify({ type: eventType, ...data })}\n\n`;
+  for (const client of sseClients) {
+    client.write(payload);
+  }
+}
+
+// Export so routes can use it
+app.locals.sseEmit = sseEmit;
+
 // ─── Server ──────────────────────────────────────────────────────────────────
 const server = http.createServer(app);
 

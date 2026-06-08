@@ -23,6 +23,12 @@ router.post('/', (req, res) => {
   logApi(imei, 'product', req.path, body, response, 200);
   console.log(`[HTTPS] product  ${imei}  payment_id=${paymentId}  col=${column}  price=${price}`);
   res.json(response);
+
+  // Notify browser via SSE
+  const sseEmit = req.app.locals.sseEmit;
+  if (sseEmit) {
+    sseEmit('product', { imei, payment_id: paymentId, column, price });
+  }
 });
 
 // Clear on cancel
