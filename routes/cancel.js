@@ -1,5 +1,6 @@
 const { Router } = require('express');
 const { upsertTerminal, logApi, logTransaction } = require('../db');
+const { clearPendingConfirm } = require('./product');
 
 const router = Router();
 
@@ -14,9 +15,10 @@ router.post('/', (req, res) => {
   // Real server returns only payment_id
   const response = { payment_id: paymentId };
 
+  clearPendingConfirm(imei);  // cancel 時清掉 auto confirm 計時器
   logApi(imei, 'cancel', req.path, body, response, 200);
   logTransaction(imei, paymentId, 'cancel', 0, 'cancelled');
-  console.log(`[HTTPS] cancel  ${imei}  payment_id=${paymentId}  reason=${response.cancel_reason}`);
+  console.log(`[HTTPS] cancel  ${imei}  payment_id=${paymentId}  reason=${body.reason || '-'}`);
   res.json(response);
 });
 
