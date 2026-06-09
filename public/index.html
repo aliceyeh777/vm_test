@@ -53,7 +53,7 @@
   <!-- Left: Push Commands -->
   <div class="card">
     <h2>選擇裝置</h2>
-    <select id="imei-select"><option value="">— select terminal —</option></select>
+    <select id="imei-select" onchange="refreshApiLog();refreshWsLog()"><option value="">— select terminal —</option></select>
 
     <!-- 系統控制 -->
     <div class="group-label">系統控制</div>
@@ -225,24 +225,34 @@ function appendLog(direction, type, payload) {
 function clearLog() { $('log-box').innerHTML = ''; }
 
 async function refreshApiLog() {
-  const logs = await fetchJSON('/ctrl/logs?limit=50');
+  const imei = $('imei-select').value;
+  const url = imei ? `/ctrl/logs?limit=50&imei=${encodeURIComponent(imei)}` : '/ctrl/logs?limit=50';
+  const logs = await fetchJSON(url);
   const box = $('api-log-box');
-  box.innerHTML = logs.map(l => {
-    const res = JSON.parse(l.response_body || '{}');
-    return `<div class="api"><span style="color:#555">${l.created_at}</span> `+
-      `<span class="tag api">API</span> <b>${l.api_name}</b> ${l.imei} `+
-      `→ ${JSON.stringify(res)}</div>`;
-  }).join('');
+  box.innerHTML = logs.length === 0
+    ? `<div style="color:#555">（無紀錄${imei ? ' — ' + imei : ''}）</div>`
+    : logs.map(l => {
+        const res = JSON.parse(l.response_body || '{}');
+        return `<div class="api"><span style="color:#555">${l.created_at}</span> `+
+          `<span class="tag api">API</span> <b>${l.api_name}</b> `+
+          `<span style="color:#888">${l.imei}</span> `+
+          `→ <span style="color:#ffd700">${JSON.stringify(res)}</span></div>`;
+      }).join('');
 }
 
 async function refreshWsLog() {
-  const msgs = await fetchJSON('/ctrl/ws-messages?limit=50');
+  const imei = $('imei-select').value;
+  const url = imei ? `/ctrl/ws-messages?limit=100&imei=${encodeURIComponent(imei)}` : '/ctrl/ws-messages?limit=100';
+  const msgs = await fetchJSON(url);
   const box = $('log-box');
-  box.innerHTML = msgs.reverse().map(m =>
-    `<div><span style="color:#555">${m.created_at}</span> `+
-    `<span class="tag ${m.direction}">${m.direction.toUpperCase()}</span> `+
-    `<b>${m.type}</b> ${m.imei} ${m.payload}</div>`
-  ).join('');
+  box.innerHTML = msgs.length === 0
+    ? `<div style="color:#555">（無 WS 訊息${imei ? ' — ' + imei : ''}）</div>`
+    : msgs.reverse().map(m =>
+        `<div><span style="color:#555">${m.created_at}</span> `+
+        `<span class="tag ${m.direction}">${m.direction.toUpperCase()}</span> `+
+        `<b>${m.type}</b> <span style="color:#888">${m.imei}</span> `+
+        `<span style="color:#aaa">${m.payload}</span></div>`
+      ).join('');
 }
 
 async function refreshAll() {

@@ -76,13 +76,15 @@ app.get('/ctrl/terminals/all', (_req, res) => {
 // Recent HTTPS API logs
 app.get('/ctrl/logs', (req, res) => {
   const limit = parseInt(req.query.limit) || 100;
-  res.json(getRecentLogs(limit));
+  const imei = req.query.imei || null;
+  res.json(getRecentLogs(limit, imei));
 });
 
 // Recent WS messages
 app.get('/ctrl/ws-messages', (req, res) => {
   const limit = parseInt(req.query.limit) || 100;
-  res.json(getRecentWsMessages(limit));
+  const imei = req.query.imei || null;
+  res.json(getRecentWsMessages(limit, imei));
 });
 
 // Version info

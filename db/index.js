@@ -85,11 +85,17 @@ function logTransaction(imei, paymentId, apiType, amount, status) {
   `).run(imei, paymentId, apiType, amount, status);
 }
 
-function getRecentLogs(limit = 100) {
+function getRecentLogs(limit = 100, imei = null) {
+  if (imei) {
+    return db.prepare(`SELECT * FROM api_logs WHERE imei = ? ORDER BY created_at DESC LIMIT ?`).all(imei, limit);
+  }
   return db.prepare(`SELECT * FROM api_logs ORDER BY created_at DESC LIMIT ?`).all(limit);
 }
 
-function getRecentWsMessages(limit = 100) {
+function getRecentWsMessages(limit = 100, imei = null) {
+  if (imei) {
+    return db.prepare(`SELECT * FROM ws_messages WHERE imei = ? ORDER BY created_at DESC LIMIT ?`).all(imei, limit);
+  }
   return db.prepare(`SELECT * FROM ws_messages ORDER BY created_at DESC LIMIT ?`).all(limit);
 }
 
