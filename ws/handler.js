@@ -71,7 +71,12 @@ function init(wss) {
 
     ws.on('close', () => {
       console.log(`[WS] Disconnected: ${imei}`);
-      clients.delete(imei);
+      // Only remove from map if this socket is still the current one.
+      // If a newer connection already replaced it, deleting here would
+      // wrongly evict the live connection (race condition on rapid reconnect).
+      if (clients.get(imei) === ws) {
+        clients.delete(imei);
+      }
     });
 
     ws.on('error', (err) => {
