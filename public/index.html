@@ -93,20 +93,20 @@
     <div id="terminals-list">Loading...</div>
   </div>
 
-  <!-- Right: Logs -->
+  <!-- Right: HTTPS API Log -->
   <div class="card">
-    <h2>Live Log
-      <button onclick="clearLog()" style="font-size:11px;padding:2px 8px;margin-left:6px">Clear</button>
-      <button onclick="refreshAll()" style="font-size:11px;padding:2px 8px;margin-left:4px">↻ Refresh</button>
-    </h2>
-    <div class="log-box" id="log-box"></div>
+    <h2>HTTPS API Log (latest 50)</h2>
+    <div class="log-box" id="api-log-box"></div>
   </div>
 </div>
 
-<!-- HTTPS API Log -->
+<!-- Live Log (full width, taller) -->
 <div class="card" style="margin-top:16px">
-  <h2>HTTPS API Log (latest 50)</h2>
-  <div class="log-box" id="api-log-box"></div>
+  <h2>Live Log — WS Messages
+    <button onclick="clearLog()" style="font-size:11px;padding:2px 8px;margin-left:6px">Clear</button>
+    <button onclick="refreshAll()" style="font-size:11px;padding:2px 8px;margin-left:4px">↻ Refresh</button>
+  </h2>
+  <div class="log-box" id="log-box" style="height:400px"></div>
 </div>
 
 <script>
