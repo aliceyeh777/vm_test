@@ -250,6 +250,8 @@ async function refreshAll() {
 }
 
 // ── SSE: real-time notifications from server ──────────────────────────────────
+function closeBanner() { document.getElementById('confirm-banner').style.display = 'none'; }
+
 function initSSE() {
   const es = new EventSource('/ctrl/events');
 
@@ -257,9 +259,9 @@ function initSSE() {
     const ev = JSON.parse(e.data);
 
     if (ev.type === 'product') {
-      // Flash the payment_confirm button and show banner
-      showConfirmBanner(ev.imei, ev.payment_id, ev.column, ev.price);
-      // Also update pending info text and refresh logs
+      // Delay banner by 1.5s: firmware (LTE) needs time to receive the HTTP
+      // response and transition to PRODUCT_API_SUCCESS before we push WS confirm.
+      setTimeout(() => showConfirmBanner(ev.imei, ev.payment_id, ev.column, ev.price), 1500);
       refreshTerminals();
       refreshApiLog();
     }
@@ -289,7 +291,7 @@ function showConfirmBanner(imei, paymentId, column, price) {
       ${btn('✅ 刷卡成功 (confirm)', '#00d4ff', `quickAction('${imei}','${paymentId}','confirm')`)}
       ${btn('❌ 拒卡 (402)', '#e63946',        `quickAction('${imei}','${paymentId}','reject')`)}
       ${btn('⚠️ 衝突重試 (409)', '#f4a261',    `quickAction('${imei}','${paymentId}','conflict')`)}
-      <button onclick="$('confirm-banner').style.display='none'"
+      <button onclick="closeBanner()"
         style="background:transparent;color:#aaa;border:none;cursor:pointer;margin-left:12px">✕ 忽略</button>
     </div>
   `;
@@ -331,7 +333,7 @@ async function quickAction(imei, paymentId, action) {
                  border-radius:4px;cursor:pointer;margin-right:6px">
           改用 ${id} 重送
         </button>`).join('')}
-        <button onclick="$('confirm-banner').style.display='none'"
+        <button onclick="closeBanner()"
           style="background:transparent;color:#aaa;border:none;cursor:pointer">✕</button>
       </div>`;
     banner.style.display = 'block';
