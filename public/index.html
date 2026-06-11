@@ -114,7 +114,7 @@
   <h2>API Fault Injection
     <span style="font-size:11px;color:#555;font-weight:normal;margin-left:8px">設定後立即生效，裝置下次請求時套用</span>
   </h2>
-  <div id="fault-table" style="display:grid;grid-template-columns:70px 1fr;row-gap:10px;align-items:start;margin-top:10px"></div>
+  <div id="fault-table" style="display:grid;grid-template-columns:auto 1fr;column-gap:16px;row-gap:12px;align-items:start;margin-top:10px"></div>
 </div>
 
 <!-- Live Log (full width, taller) -->
@@ -374,11 +374,11 @@ async function quickAction(imei, paymentId, action) {
 
 // ── Fault Injection ───────────────────────────────────────────────────────────
 const FAULT_ROUTES = [
-  { key: 'notify',  label: 'notify',  modes: ['500', 'timeout', 'bad_json', 'close'] },
-  { key: 'batch',   label: 'batch',   modes: ['500', 'timeout', 'bad_json', 'close'] },
-  { key: 'confirm', label: 'confirm', modes: ['500', 'timeout'] },
-  { key: 'product', label: 'product', modes: ['500', 'timeout'] },
-  { key: 'token',   label: 'token',   modes: ['500', 'timeout'] },
+  { key: 'notify',  label: 'notify',  desc: '每筆交易後上傳 POS 資料（失敗時裝置存入 Flash Queue）', modes: ['500', 'timeout', 'bad_json', 'close'] },
+  { key: 'batch',   label: 'batch',   desc: '每日批量對帳上傳（collation batch）',                   modes: ['500', 'timeout', 'bad_json', 'close'] },
+  { key: 'confirm', label: 'confirm', desc: 'NFC / IC 卡扣款確認（失敗時裝置走取消流程）',           modes: ['500', 'timeout'] },
+  { key: 'product', label: 'product', desc: '商品選擇時查詢價格（失敗時裝置回 standby）',            modes: ['500', 'timeout'] },
+  { key: 'token',   label: 'token',   desc: '開機時取得授權 token（失敗時無法進入正常模式）',         modes: ['500', 'timeout'] },
 ];
 
 const MODE_LABEL = { normal: '● 正常', '500': '500', timeout: 'Timeout', bad_json: 'Bad JSON', close: '斷線' };
@@ -388,9 +388,10 @@ function buildFaultTable() {
   const table = $('fault-table');
   table.innerHTML = '';
   for (const r of FAULT_ROUTES) {
-    const lbl = document.createElement('span');
-    lbl.className = 'fi-label';
-    lbl.textContent = r.label;
+    const lbl = document.createElement('div');
+    lbl.innerHTML =
+      `<div class="fi-label">${r.label}</div>` +
+      `<div style="font-size:11px;color:#556;margin-top:2px;white-space:nowrap">${r.desc}</div>`;
     table.appendChild(lbl);
 
     const row = document.createElement('div');
