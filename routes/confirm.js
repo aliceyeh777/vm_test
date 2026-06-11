@@ -1,5 +1,6 @@
 const { Router } = require('express');
 const { upsertTerminal, logApi, logTransaction } = require('../db');
+const fi = require('../fault-injection');
 
 const router = Router();
 
@@ -21,6 +22,8 @@ router.post('/', (req, res) => {
   const paymentId = body.payment_id || '';
 
   upsertTerminal(imei);
+
+  if (fi.applyFault(res, 'confirm')) return;
 
   const mode = rejectNext.get(imei);
   if (mode) {

@@ -10,6 +10,7 @@ const routes = require('./routes');
 const wsHandler = require('./ws/handler');
 const productRoute = require('./routes/product');
 const confirmRoute = require('./routes/confirm');
+const faultRoute = require('./routes/fault');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -111,6 +112,9 @@ app.post('/ctrl/confirm-reject', (req, res) => {
 app.get('/ctrl/confirm-reject/:imei', (req, res) => {
   res.json({ mode: confirmRoute.getRejectMode(req.params.imei) });
 });
+
+// Fault injection control
+app.use('/ctrl/fault', faultRoute);
 
 // ─── SSE: real-time events to browser ────────────────────────────────────────
 const sseClients = new Set();

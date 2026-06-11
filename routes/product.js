@@ -1,5 +1,6 @@
 const { Router } = require('express');
 const { upsertTerminal, logApi } = require('../db');
+const fi = require('../fault-injection');
 
 const router = Router();
 
@@ -15,6 +16,8 @@ router.post('/', (req, res) => {
   const price = body.price || 0;
 
   upsertTerminal(imei);
+
+  if (fi.applyFault(res, 'product')) return;
 
   // Track latest product selection for this terminal
   latestProduct.set(imei, { payment_id: paymentId, column, price });

@@ -40,6 +40,15 @@
   .group-label { font-size: 11px; color: #5599cc; text-transform: uppercase;
     letter-spacing: 1px; margin-top: 14px; margin-bottom: 2px;
     border-bottom: 1px solid #1a3a5a; padding-bottom: 3px; }
+  /* Fault Injection */
+  .fi-btn { background: #111827; color: #667; border: 1px solid #2a3a4a;
+    padding: 4px 11px; border-radius: 4px; cursor: pointer;
+    font-family: monospace; font-size: 12px; transition: border-color 0.1s, color 0.1s; }
+  .fi-btn:hover { border-color: #00d4ff; color: #ccc; }
+  .fi-active-ok   { background: #071a10 !important; border-color: #00ff88 !important; color: #00ff88 !important; }
+  .fi-active-err  { background: #1f0a0a !important; border-color: #e63946 !important; color: #e63946 !important; }
+  .fi-active-warn { background: #1f1005 !important; border-color: #f4a261 !important; color: #f4a261 !important; }
+  .fi-label { font-size: 12px; color: #aaa; font-family: monospace; padding-top: 2px; }
 </style>
 </head>
 <body>
@@ -98,6 +107,14 @@
     <h2>HTTPS API Log (latest 50)</h2>
     <div class="log-box" id="api-log-box"></div>
   </div>
+</div>
+
+<!-- Fault Injection (full width) -->
+<div class="card" style="margin-top:16px">
+  <h2>API Fault Injection
+    <span style="font-size:11px;color:#555;font-weight:normal;margin-left:8px">設定後立即生效，裝置下次請求時套用</span>
+  </h2>
+  <div id="fault-table" style="display:grid;grid-template-columns:70px 1fr;row-gap:10px;align-items:start;margin-top:10px"></div>
 </div>
 
 <!-- Live Log (full width, taller) -->
@@ -256,7 +273,7 @@ async function refreshWsLog() {
 }
 
 async function refreshAll() {
-  await Promise.all([refreshTerminals(), refreshApiLog(), refreshWsLog()]);
+  await Promise.all([refreshTerminals(), refreshApiLog(), refreshWsLog(), refreshFaults()]);
 }
 
 // ── SSE: real-time notifications from server ──────────────────────────────────
@@ -355,6 +372,62 @@ async function quickAction(imei, paymentId, action) {
   appendLog('send', 'payment_confirm_request', { imei, payment_id: paymentId });
 }
 
+// ── Fault Injection ───────────────────────────────────────────────────────────
+const FAULT_ROUTES = [
+  { key: 'notify',  label: 'notify',  modes: ['500', 'timeout', 'bad_json', 'close'] },
+  { key: 'batch',   label: 'batch',   modes: ['500', 'timeout', 'bad_json', 'close'] },
+  { key: 'confirm', label: 'confirm', modes: ['500', 'timeout'] },
+  { key: 'product', label: 'product', modes: ['500', 'timeout'] },
+  { key: 'token',   label: 'token',   modes: ['500', 'timeout'] },
+];
+
+const MODE_LABEL = { normal: '● 正常', '500': '500', timeout: 'Timeout', bad_json: 'Bad JSON', close: '斷線' };
+const MODE_CLASS  = { normal: 'fi-active-ok', '500': 'fi-active-err', timeout: 'fi-active-warn', bad_json: 'fi-active-warn', close: 'fi-active-err' };
+
+function buildFaultTable() {
+  const table = $('fault-table');
+  table.innerHTML = '';
+  for (const r of FAULT_ROUTES) {
+    const lbl = document.createElement('span');
+    lbl.className = 'fi-label';
+    lbl.textContent = r.label;
+    table.appendChild(lbl);
+
+    const row = document.createElement('div');
+    row.className = 'btn-row';
+    for (const mode of ['normal', ...r.modes]) {
+      const btn = document.createElement('button');
+      btn.className = 'fi-btn';
+      btn.dataset.route = r.key;
+      btn.dataset.mode  = mode;
+      btn.textContent   = MODE_LABEL[mode] || mode;
+      btn.onclick = () => setFault(r.key, mode === 'normal' ? null : mode);
+      row.appendChild(btn);
+    }
+    table.appendChild(row);
+  }
+}
+
+async function refreshFaults() {
+  const faults = await fetchJSON('/ctrl/fault');
+  for (const [route, mode] of Object.entries(faults)) {
+    const active = mode || 'normal';
+    document.querySelectorAll(`.fi-btn[data-route="${route}"]`).forEach(btn => {
+      btn.classList.remove('fi-active-ok', 'fi-active-err', 'fi-active-warn');
+      if (btn.dataset.mode === active) btn.classList.add(MODE_CLASS[active] || 'fi-active-warn');
+    });
+  }
+}
+
+async function setFault(route, mode) {
+  await fetchJSON('/ctrl/fault', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ route, mode }),
+  });
+  refreshFaults();
+}
+
 // ── Version ───────────────────────────────────────────────────────────────────
 async function loadVersion() {
   const v = await fetchJSON('/ctrl/version');
@@ -364,6 +437,7 @@ async function loadVersion() {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 loadVersion();
+buildFaultTable();
 refreshAll();
 setInterval(refreshAll, 5000);
 initSSE();

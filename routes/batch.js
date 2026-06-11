@@ -1,5 +1,6 @@
 const { Router } = require('express');
 const { upsertTerminal, logApi } = require('../db');
+const fi = require('../fault-injection');
 
 const router = Router();
 
@@ -10,6 +11,8 @@ router.post('/', (req, res) => {
   const imei = body.terminal_id || 'unknown';
 
   upsertTerminal(imei);
+
+  if (fi.applyFault(res, 'batch')) return;
 
   const response = { result: 0, message: 'batch accepted' };
   logApi(imei, 'batch', req.path, body, response, 200);

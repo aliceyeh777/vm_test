@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const { v4: uuidv4 } = require('uuid');
 const { upsertTerminal, saveToken, logApi } = require('../db');
+const fi = require('../fault-injection');
 
 const router = Router();
 
@@ -10,6 +11,8 @@ router.post('/', (req, res) => {
   const imei = body.terminal_id || 'unknown';
 
   upsertTerminal(imei);
+
+  if (fi.applyFault(res, 'token')) return;
 
   const token = uuidv4().replace(/-/g, '') + uuidv4().replace(/-/g, '');
   saveToken(imei, token);
