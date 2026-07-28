@@ -21,12 +21,15 @@ mock-jihan-server/
 │   ├── close.js         ← POST /api/v1/terminal/close
 │   ├── notify.js        ← POST /api/v1/terminal/collation/notify
 │   ├── batch.js         ← POST /api/v1/terminal/collation/batch
-│   └── ota.js           ← POST /api/v1/terminal/firmware_update
+│   ├── ota.js           ← POST /api/v1/terminal/firmware_update（依 armed 狀態回覆）
+│   ├── ota-admin.js     ← /ctrl/ota/*：上傳 / arm / trigger（Web UI 用）
+│   └── ota-download.js  ← GET /ota/download/:id：裝置下載韌體映像
 ├── ws/
 │   └── handler.js       ← WebSocket 長連線管理、push 命令
 ├── public/
 │   └── index.html       ← 控制介面 Web UI
 ├── data/                ← SQLite 資料庫存放處（git 忽略）
+│   └── ota/             ← 上傳的 OTA 映像存放處（git 忽略）
 ├── .env.example
 ├── .gitignore
 └── package.json
@@ -113,6 +116,36 @@ CREATE TABLE transactions (
   status     TEXT,
   created_at TEXT DEFAULT (datetime('now'))
 );
+
+-- 上傳的 OTA 韌體映像（Ameba 主韌體或 SIM7500 delta）
+CREATE TABLE ota_files (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  filename       TEXT NOT NULL,
+  stored_path    TEXT NOT NULL,
+  size           INTEGER,
+  sha256         TEXT,
+  kind           TEXT,            -- 'ameba' | 'lte'（由 OTA1 magic 自動判別）
+  is_valid_ameba INTEGER DEFAULT 0,
+  target_version TEXT,            -- 完成後裝置應回報的版本
+  img_len        INTEGER,         -- 由 OTA1 header 解析（僅 ameba）
+  checksum       TEXT,            -- OTA1 checksum, hex（僅 ameba）
+  download_count INTEGER DEFAULT 0,
+  last_download_at TEXT,
+  uploaded_at    TEXT DEFAULT (datetime('now'))
+);
+
+-- 每台裝置 armed 的 OTA 目標與進度（imei='*' 表示對所有裝置）
+CREATE TABLE ota_targets (
+  imei           TEXT PRIMARY KEY,
+  file_id        INTEGER NOT NULL,
+  transport      TEXT NOT NULL,   -- 'ameba' | 'lte'
+  target_version TEXT,
+  state          TEXT DEFAULT 'armed', -- armed|offered|downloading|downloaded|verified|already_current
+  offered_count  INTEGER DEFAULT 0,
+  bytes_sent     INTEGER DEFAULT 0,
+  armed_at       TEXT DEFAULT (datetime('now')),
+  updated_at     TEXT DEFAULT (datetime('now'))
+);
 ```
 
 ---
@@ -131,7 +164,7 @@ CREATE TABLE transactions (
 | close | `/close` | 結帳（DC16） | `{ result: 0 }` |
 | notify | `/collation/notify` | 每筆 CL / 現金交易後上傳 POS | `{ result: 0 }` |
 | batch | `/collation/batch` | 每日批量對帳 | `{ result: 0 }` |
-| ota | `/firmware_update` | 開機 FOTA 查詢 | `update_available: false`（預設不更新） |
+| ota | `/firmware_update` | 開機 / WS 觸發 FOTA 查詢 | 依 armed 狀態回 `needs_update`+`url`（Ameba）或 `lte_needs_update`+`lte_url`（LTE 模組）；未 arm 時全為 false。詳見「OTA 測試」 |
 
 ---
 
@@ -168,7 +201,59 @@ WebSocket 連線路徑：`ws://<host>/<IMEI>`
 - **左欄**：選擇連線中的裝置，一鍵推送各種 WS 命令
 - **右欄**：即時 WS 訊息 log（綠色=裝置送來，藍色=伺服器送出）
 - **底部**：HTTPS API 呼叫紀錄（顯示最近 50 筆）
+- **OTA 面板**：上傳韌體映像、arm 給裝置、即時看下載與驗證進度（見下節）
 - 每 5 秒自動刷新
+
+---
+
+## OTA 測試
+
+讓你把一份 OTA 映像上傳到 mock server，指定給某台裝置，然後端對端觀察整條 OTA 機制是否成功。支援兩條路：
+
+- **Ameba 主韌體**：上傳 `EW7712ACL_v<版本>.bin`（含 `OTA1` frame header，會被自動辨識），對應 `needs_update` / `url`。
+- **SIM7500 模組 delta**：上傳 delta 包（無 `OTA1` magic，自動歸類為 `lte`），對應 `lte_needs_update` / `lte_url`。
+
+### 關鍵前提
+
+- 裝置下載固定走 **HTTPS 443**（韌體 `AT+CHTTPSOPSE="host",443,2`），所以下載 URL 必須是裝置連得到的 HTTPS host。用 `PUBLIC_BASE_URL` 指定（VPS 為 `https://mock-jihan.ddns.net`）；未設則回退到請求自身的 host。
+- 下載端點回 `Content-Type: application/octet-stream` + 正確 `Content-Length`，bytes 原封不動；checksum 由**裝置自己**回讀 flash 驗證，server 不驗。
+
+### 操作步驟（Web UI）
+
+1. 在「OTA 韌體更新」面板選檔上傳 → 顯示 `kind` / `OTA1✓` / `ImgLen` / `checksum` / 解析出的版本。
+2. 上方先選好目標裝置（`select terminal`），按檔案列的 **arm→選定**（或 **arm→全部** 對所有裝置）。
+3. （可選）按 **立刻觸發** → 推 WS `firmware_update`，裝置立即查詢並開始 OTA，不必等重開機。
+4. 看「Arm 狀態 / 驗證進度」：`① 已提供 → ② 下載中 → ③ 下載完成 → ④ 已驗證 ✅`。裝置重開機後回報的版本 == 目標版本時，即標記 **verified**。
+
+> **版本比對**：目標版本預設從檔名 `v<版本>` 解析（如 `EW7712ACL_v9.280.bin` → `9.280`），arm 時可覆寫。裝置回報同版本前，server 會持續回 `needs_update=true`（支援韌體端 10 分鐘重試），避免下載失敗就中斷。
+
+### 控制台 API（也可用 curl）
+
+| Method | 路徑 | 說明 |
+|--------|------|------|
+| POST | `/ctrl/ota/upload?name=<檔名>` | 上傳（body 為 raw binary） |
+| GET | `/ctrl/ota/files` | 列出已上傳映像 |
+| DELETE | `/ctrl/ota/files/:id` | 刪除映像 |
+| POST | `/ctrl/ota/arm` | `{ imei\|"*", file_id, transport?, target_version? }` |
+| POST | `/ctrl/ota/disarm` | `{ imei }` |
+| POST | `/ctrl/ota/trigger` | `{ imei }`：推 WS `firmware_update` |
+| GET | `/ctrl/ota/status` | 所有映像 + 每台 arm 狀態與進度 |
+| GET | `/ota/download/:id` | 裝置下載端點（公開、無認證） |
+
+```sh
+# 上傳
+curl -X POST "http://localhost:3000/ctrl/ota/upload?name=EW7712ACL_v9.280.bin" \
+     --data-binary @EW7712ACL_v9.280.bin
+# arm 給某台裝置
+curl -X POST http://localhost:3000/ctrl/ota/arm \
+     -H 'Content-Type: application/json' \
+     -d '{"imei":"<IMEI>","file_id":1,"transport":"ameba"}'
+# 立刻觸發
+curl -X POST http://localhost:3000/ctrl/ota/trigger \
+     -H 'Content-Type: application/json' -d '{"imei":"<IMEI>"}'
+```
+
+> OTA 傳輸層/雙 slot/斷電原子性等機制細節見主韌體 repo 的 `doc/OTA_LTE_FOTA.md` 與 `doc/OTA_MECHANISM.md`。
 
 ---
 
@@ -241,6 +326,7 @@ Railway Dashboard → 專案 → + New → Database → PostgreSQL
 
 - Mock response 中的 `article_price`、`inquiry_balance` 等數值為預設假資料，
   需依照實際 API spec 調整 `routes/product.js` 的回傳格式
-- OTA 預設回傳 `update_available: false`，
-  若要測試 FOTA 流程，改 `routes/ota.js` 的 `update_available: true` 並填入韌體 URL
+- OTA 預設不更新（未 arm 時 `needs_update` / `lte_needs_update` 皆為 false）；
+  要測 FOTA 流程請用 Web UI 的「OTA 韌體更新」面板或 `/ctrl/ota/*` API 上傳並 arm，
+  不需再手改 `routes/ota.js`（見「OTA 測試」章節）
 - WebSocket 的 `payment_confirm_request` 內容格式需對照 `gplus_at_pay.c` 的 parse 邏輯確認欄位名稱

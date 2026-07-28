@@ -117,6 +117,25 @@
   <div id="fault-table" style="display:grid;grid-template-columns:auto 1fr;column-gap:16px;row-gap:12px;align-items:start;margin-top:10px"></div>
 </div>
 
+<!-- OTA (full width) -->
+<div class="card" style="margin-top:16px">
+  <h2>OTA 韌體更新
+    <span style="font-size:11px;color:#555;font-weight:normal;margin-left:8px">上傳 EW7712ACL_v*.bin（Ameba 主韌體）或 SIM7500 delta 包 → arm 給裝置 → 觀察下載與驗證</span>
+  </h2>
+
+  <div style="display:flex;gap:8px;align-items:center;margin:10px 0">
+    <input type="file" id="ota-file" style="width:auto;flex:1;margin:0">
+    <button onclick="uploadOta()">上傳</button>
+  </div>
+  <div id="ota-upload-msg" style="font-size:12px;color:#aaa;min-height:16px;margin-bottom:8px"></div>
+
+  <div class="group-label">已上傳檔案</div>
+  <div id="ota-files-list" style="font-size:12px">Loading...</div>
+
+  <div class="group-label" style="margin-top:14px">Arm 狀態 / 驗證進度</div>
+  <div id="ota-targets-list" style="font-size:12px">—</div>
+</div>
+
 <!-- Live Log (full width, taller) -->
 <div class="card" style="margin-top:16px">
   <h2>Live Log — WS Messages
@@ -273,7 +292,7 @@ async function refreshWsLog() {
 }
 
 async function refreshAll() {
-  await Promise.all([refreshTerminals(), refreshApiLog(), refreshWsLog(), refreshFaults()]);
+  await Promise.all([refreshTerminals(), refreshApiLog(), refreshWsLog(), refreshFaults(), refreshOta()]);
 }
 
 // ── SSE: real-time notifications from server ──────────────────────────────────
@@ -291,6 +310,12 @@ function initSSE() {
       setTimeout(() => showConfirmBanner(ev.imei, ev.payment_id, ev.column, ev.price), 1500);
       refreshTerminals();
       refreshApiLog();
+    }
+
+    if (ev.type === 'ota') {
+      const who = ev.imei || ev.filename || '';
+      appendLog('recv', `OTA ${ev.phase}`, ev);
+      refreshOta();
     }
   };
 
@@ -427,6 +452,136 @@ async function setFault(route, mode) {
     body: JSON.stringify({ route, mode }),
   });
   refreshFaults();
+}
+
+// ── OTA ───────────────────────────────────────────────────────────────────────
+const OTA_PHASES = ['offered', 'downloading', 'downloaded', 'verified'];
+const OTA_PHASE_LABEL = {
+  armed: '已 arm，等待裝置查詢', offered: '① 已提供', downloading: '② 下載中',
+  downloaded: '③ 下載完成', verified: '④ 已驗證 ✅', already_current: '裝置已是目標版本',
+};
+
+async function uploadOta() {
+  const input = $('ota-file');
+  const file = input.files[0];
+  if (!file) { alert('請先選擇一個 .bin 檔'); return; }
+  $('ota-upload-msg').textContent = `上傳中 ${file.name} (${file.size} bytes)...`;
+  try {
+    const res = await fetchJSON(`/ctrl/ota/upload?name=${encodeURIComponent(file.name)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: file,
+    });
+    if (res.ok) {
+      const f = res.file;
+      $('ota-upload-msg').innerHTML =
+        `✅ 已上傳 <b>${f.filename}</b> — ${f.size}B, kind=<b>${f.kind}</b>` +
+        (f.is_valid_ameba ? `, OTA1 valid, ImgLen=${f.img_len}, checksum=${f.checksum}` : ' (無 OTA1 magic，視為 LTE delta)') +
+        `, ver=${f.target_version || '?'}`;
+      input.value = '';
+    } else {
+      $('ota-upload-msg').textContent = `❌ ${res.error || '上傳失敗'}`;
+    }
+  } catch (e) {
+    $('ota-upload-msg').textContent = `❌ 上傳錯誤: ${e.message}`;
+  }
+  refreshOta();
+}
+
+async function armOta(fileId, kind) {
+  const imei = getSelectedImei();
+  if (!imei) return;
+  const transport = prompt('transport (ameba / lte):', kind || 'ameba');
+  if (!transport) return;
+  const res = await fetchJSON('/ctrl/ota/arm', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ imei, file_id: fileId, transport }),
+  });
+  if (res.error) alert(`arm 失敗: ${res.error}`);
+  else appendLog('send', `OTA armed (${transport} v${res.target_version})`, { imei, file_id: fileId });
+  refreshOta();
+}
+
+async function armOtaBroadcast(fileId, kind) {
+  const transport = prompt('對所有裝置 arm — transport (ameba / lte):', kind || 'ameba');
+  if (!transport) return;
+  const res = await fetchJSON('/ctrl/ota/arm', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ imei: '*', file_id: fileId, transport }),
+  });
+  if (res.error) alert(`arm 失敗: ${res.error}`);
+  refreshOta();
+}
+
+async function disarmOta(imei) {
+  await fetchJSON('/ctrl/ota/disarm', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ imei }),
+  });
+  refreshOta();
+}
+
+async function triggerOta(imei) {
+  const target = imei || getSelectedImei();
+  if (!target) return;
+  const res = await fetchJSON('/ctrl/ota/trigger', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ imei: target }),
+  });
+  appendLog('send', 'firmware_update (trigger)', { imei: target, ok: res.ok });
+  if (!res.ok) alert(`推送失敗：${target} 未在 WS 連線清單`);
+}
+
+async function deleteOtaFile(fileId) {
+  if (!confirm('刪除這個 OTA 檔？')) return;
+  await fetchJSON(`/ctrl/ota/files/${fileId}`, { method: 'DELETE' });
+  refreshOta();
+}
+
+function otaProgressBar(state) {
+  if (state === 'already_current') return `<span style="color:#f4a261">${OTA_PHASE_LABEL.already_current}</span>`;
+  const idx = OTA_PHASES.indexOf(state);
+  return OTA_PHASES.map((p, i) => {
+    const done = idx >= 0 && i <= idx;
+    const color = p === 'verified' && done ? '#00ff88' : (done ? '#00d4ff' : '#445');
+    return `<span style="color:${color}">${OTA_PHASE_LABEL[p]}</span>`;
+  }).join('<span style="color:#334"> → </span>');
+}
+
+async function refreshOta() {
+  const data = await fetchJSON('/ctrl/ota/status');
+
+  // Files
+  const fbox = $('ota-files-list');
+  fbox.innerHTML = data.files.length === 0
+    ? '<div style="color:#555">（尚無上傳檔案）</div>'
+    : data.files.map(f => `
+        <div class="terminal-row" style="flex-wrap:wrap">
+          <span class="tag ${f.kind === 'ameba' ? 'api' : 'send'}">${f.kind}</span>
+          <b>${f.filename}</b>
+          <span style="color:#888">${(f.size/1024).toFixed(1)}KB · v${f.target_version || '?'}${f.is_valid_ameba ? ' · OTA1✓' : ''} · dl×${f.download_count}</span>
+          <span class="btn-row" style="margin:0 0 0 auto">
+            <button onclick="armOta(${f.id},'${f.kind}')" style="font-size:11px;padding:3px 8px">arm→選定</button>
+            <button onclick="armOtaBroadcast(${f.id},'${f.kind}')" style="font-size:11px;padding:3px 8px">arm→全部</button>
+            <button onclick="deleteOtaFile(${f.id})" class="danger" style="font-size:11px;padding:3px 8px">刪</button>
+          </span>
+        </div>`).join('');
+
+  // Armed targets + progress
+  const tbox = $('ota-targets-list');
+  tbox.innerHTML = data.targets.length === 0
+    ? '<div style="color:#555">（尚無 armed 目標）</div>'
+    : data.targets.map(t => `
+        <div class="terminal-row" style="flex-wrap:wrap">
+          <b>${t.imei}</b>
+          <span class="tag ${t.transport === 'ameba' ? 'api' : 'send'}">${t.transport}</span>
+          <span style="color:#888">${t.filename || '(檔案已刪)'} → v${t.target_version}</span>
+          <span style="margin-left:8px">${otaProgressBar(t.state)}</span>
+          <span class="btn-row" style="margin:0 0 0 auto">
+            <button onclick="triggerOta('${t.imei}')" class="warn" style="font-size:11px;padding:3px 8px">立刻觸發</button>
+            <button onclick="disarmOta('${t.imei}')" style="font-size:11px;padding:3px 8px">disarm</button>
+          </span>
+        </div>`).join('');
 }
 
 // ── Version ───────────────────────────────────────────────────────────────────

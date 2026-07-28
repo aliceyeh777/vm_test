@@ -11,6 +11,8 @@ const wsHandler = require('./ws/handler');
 const productRoute = require('./routes/product');
 const confirmRoute = require('./routes/confirm');
 const faultRoute = require('./routes/fault');
+const otaAdminRoute = require('./routes/ota-admin');
+const otaDownloadRoute = require('./routes/ota-download');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -45,6 +47,14 @@ app.use((req, res, next) => {
 
 // ─── HTTPS Mock APIs ─────────────────────────────────────────────────────────
 app.use('/api/v1/terminal', routes);
+
+// ─── OTA firmware download (device fetches the image here) ───────────────────
+// Public, no auth — mounted outside /api/v1/terminal because the firmware GETs
+// the raw image over AT+CHTTPS with no Authorization header.
+app.use('/ota', otaDownloadRoute);
+
+// ─── OTA admin (upload / arm / trigger, used by the web UI) ──────────────────
+app.use('/ctrl/ota', otaAdminRoute);
 
 // ─── Control Panel APIs (used by the web UI) ─────────────────────────────────
 
