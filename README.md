@@ -225,7 +225,15 @@ WebSocket 連線路徑：`ws://<host>/<IMEI>`
 3. （可選）按 **立刻觸發** → 推 WS `firmware_update`，裝置立即查詢並開始 OTA，不必等重開機。
 4. 看「Arm 狀態 / 驗證進度」：`① 已提供 → ② 下載中 → ③ 下載完成 → ④ 已驗證 ✅`。裝置重開機後回報的版本 == 目標版本時，即標記 **verified**。
 
+> ⚠️ **「立刻觸發」是 best-effort，沒有 ACK / 不重送**：韌體靠主迴圈輪詢 SIMCom 快取收 server 主動推的 WS 訊息，`ok=true` 只代表「server 送出成功」，**不保證裝置有處理**。若觸發當下裝置正在開機、忙其他 AT 操作、或 WS 重連中，該訊息可能被漏掉（重連會清掉 SIMCom 快取的 frame）。
+>
+> - **要用 WS 觸發**：等裝置**進 STANDBY、WS 連線穩定**後再按；沒反應就**多按一次**（fire-and-forget，補按無害）。
+> - **要穩定重現**：改用 **reboot + CFG `boot_fota=1`**（console 打 `t_edx boot_fota 1`）。開機自檢是確定性的，不受推播時機影響。
+> - 另注意：韌體 `firmware_update` handler 在 `cash_pay_process==true`（現金交易中）時會**故意忽略**觸發，標記為 pending。
+
 > **版本比對**：目標版本預設從檔名 `v<版本>` 解析（如 `EW7712ACL_v9.280.bin` → `9.280`），arm 時可覆寫。裝置回報同版本前，server 會持續回 `needs_update=true`（支援韌體端 10 分鐘重試），避免下載失敗就中斷。
+
+> **開機自檢 OTA 需開 `boot_fota`**：裝置 reboot 走的是開機自檢 FOTA 路徑，CFG `boot_fota=0`（預設，開發旁路）時會 **BYPASS**，即使 server 回 `needs_update=true` 也不更新（console log 印 `BYPASS FOTA for Development`）。要讓 reboot 也自動 OTA，先 `t_edx boot_fota 1`。WS 手動觸發（`ws_request=true`）不受此旁路影響。
 
 ### 控制台 API（也可用 curl）
 
