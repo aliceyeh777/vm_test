@@ -9,6 +9,7 @@ const {
   armOta, disarmOta, listOtaTargets,
 } = require('../db');
 const wsHandler = require('../ws/handler');
+const otaDownload = require('./ota-download');
 
 const router = Router();
 
@@ -145,9 +146,22 @@ router.post('/trigger', (req, res) => {
   res.json({ ok, imei });
 });
 
+// ─── POST /ctrl/ota/throttle  { bytes_per_sec } ──────────────────────────────
+// Pace /ota/download/:id (0 = off). Test aid for FOTA receive-timing issues.
+router.post('/throttle', (req, res) => {
+  const { bytes_per_sec } = req.body || {};
+  otaDownload.setThrottle(bytes_per_sec);
+  console.log(`[OTA] download throttle = ${otaDownload.getThrottle()} B/s`);
+  res.json({ ok: true, bytes_per_sec: otaDownload.getThrottle() });
+});
+
 // ─── GET /ctrl/ota/status ────────────────────────────────────────────────────
 router.get('/status', (_req, res) => {
-  res.json({ files: listOtaFiles().map(fileToJson), targets: listOtaTargets() });
+  res.json({
+    files: listOtaFiles().map(fileToJson),
+    targets: listOtaTargets(),
+    throttle_bytes_per_sec: otaDownload.getThrottle(),
+  });
 });
 
 module.exports = router;
