@@ -4,7 +4,7 @@ const fi = require('../fault-injection');
 
 const router = Router();
 
-// Latest product state per terminal: imei → { payment_id, column, price }
+// Latest product state per terminal: imei → { payment_id, column, price, at }
 const latestProduct = new Map();
 
 // POST /api/v1/terminal/payment/product
@@ -20,7 +20,7 @@ router.post('/', (req, res) => {
   if (fi.applyFault(res, 'product')) return;
 
   // Track latest product selection for this terminal
-  latestProduct.set(imei, { payment_id: paymentId, column, price });
+  latestProduct.set(imei, { payment_id: paymentId, column, price, at: Date.now() });
 
   const response = { payment_id: paymentId, press_count: -1 };
   logApi(imei, 'product', req.path, body, response, 200);
@@ -44,8 +44,12 @@ function getLatestProduct(imei) {
   return latestProduct.get(imei) || null;
 }
 
+// age_ms is computed here so the browser does not depend on its own clock
 function getAllLatestProducts() {
-  return Object.fromEntries(latestProduct);
+  const now = Date.now();
+  const out = {};
+  for (const [imei, p] of latestProduct) out[imei] = { ...p, age_ms: now - p.at };
+  return out;
 }
 
 module.exports = router;

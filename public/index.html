@@ -173,6 +173,14 @@ async function refreshTerminals() {
   });
   if (prev) sel.value = prev;
 
+  // Fallback for a product event the SSE connection missed
+  for (const [imei, p] of Object.entries(products)) {
+    if (!shownBanners.has(p.payment_id) && p.age_ms >= BANNER_DELAY_MS && p.age_ms < BANNER_FALLBACK_MAX_AGE_MS) {
+      showConfirmBanner(imei, p.payment_id, p.column, p.price);
+      appendLog('recv', 'product (SSE missed, shown by polling)', { imei, payment_id: p.payment_id });
+    }
+  }
+
   // Show pending payment_confirm info for selected terminal
   const selectedImei = $('imei-select').value || prev;
   const pending = products[selectedImei];
@@ -298,16 +306,35 @@ async function refreshAll() {
 // ── SSE: real-time notifications from server ──────────────────────────────────
 function closeBanner() { document.getElementById('confirm-banner').style.display = 'none'; }
 
+// Delay banner by 1.5s: firmware (LTE) needs time to receive the HTTP
+// response and transition to PRODUCT_API_SUCCESS before we push WS confirm.
+const BANNER_DELAY_MS = 1500;
+// The terminal cancels the purchase 20 s after product; leave time to press confirm
+const BANNER_FALLBACK_MAX_AGE_MS = 15000;
+// The server sends a heartbeat every 15 s; no data for this long means the connection is dead
+const SSE_DEAD_MS = 45000;
+const shownBanners = new Set();
+let sseLastAt = 0;
+
 function initSSE() {
   const es = new EventSource('/ctrl/events');
+  sseLastAt = Date.now();
+
+  const watchdog = setInterval(() => {
+    if (Date.now() - sseLastAt > SSE_DEAD_MS) {
+      clearInterval(watchdog);
+      es.close();
+      appendLog('recv', 'SSE reconnect', { silent_ms: Date.now() - sseLastAt });
+      initSSE();
+    }
+  }, 5000);
 
   es.onmessage = (e) => {
+    sseLastAt = Date.now();
     const ev = JSON.parse(e.data);
 
     if (ev.type === 'product') {
-      // Delay banner by 1.5s: firmware (LTE) needs time to receive the HTTP
-      // response and transition to PRODUCT_API_SUCCESS before we push WS confirm.
-      setTimeout(() => showConfirmBanner(ev.imei, ev.payment_id, ev.column, ev.price), 1500);
+      setTimeout(() => showConfirmBanner(ev.imei, ev.payment_id, ev.column, ev.price), BANNER_DELAY_MS);
       refreshTerminals();
       refreshApiLog();
     }
@@ -325,6 +352,7 @@ function initSSE() {
 }
 
 function showConfirmBanner(imei, paymentId, column, price) {
+  shownBanners.add(paymentId);
   const banner = document.getElementById('confirm-banner');
   const btn = (label, color, onclick) =>
     `<button onclick="${onclick}"

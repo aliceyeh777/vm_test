@@ -133,6 +133,7 @@ app.get('/ctrl/events', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders();
   res.write('data: {"type":"connected"}\n\n');
 
@@ -146,6 +147,12 @@ function sseEmit(eventType, data) {
     client.write(payload);
   }
 }
+
+// Heartbeat: an idle SSE connection can be dropped silently by NAT/proxies on the
+// browser side, and the lost events are never replayed. The heartbeat keeps the
+// connection busy and lets the page detect a dead connection (see initSSE()).
+const SSE_HEARTBEAT_MS = 15000;
+setInterval(() => sseEmit('heartbeat', {}), SSE_HEARTBEAT_MS);
 
 // Export so routes can use it
 app.locals.sseEmit = sseEmit;
