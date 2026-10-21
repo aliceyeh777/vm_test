@@ -17,7 +17,7 @@ router.post('/', (req, res) => {
   const response = { result: 0, message: 'notify accepted' };
   logApi(imei, 'notify', req.path, body, response, 200);
   console.log(`[HTTPS] notify  ${imei}  payment_id=${body.payment_id || '-'}`);
-  res.json(response);
+  fi.sendResponse(res, 'notify', response);
 });
 
 module.exports = router;

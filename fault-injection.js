@@ -3,15 +3,17 @@
 // Usage in a route: if (fi.applyFault(res, 'notify')) return;
 
 const TIMEOUT_CLEANUP_MS = 10000; // clean up hanging response after 10s
+const BIG_PAD_LEN = 1500;          // 'big': JSON over 1024 bytes → several +CHTTPSRECV DATA frames
+const SPLIT_BODY_DELAY_MS = 800;   // 'split': body sent this long after the HTTP header
 
 const faults = {};
 
 // Modes available per route (for reference by UI)
 const ROUTE_CONFIG = {
-  notify:  ['500', 'timeout', 'bad_json', 'close'],
+  notify:  ['500', 'timeout', 'bad_json', 'close', 'big', 'split'],
   batch:   ['500', 'timeout', 'bad_json', 'close'],
-  confirm: ['500', 'timeout'],
-  product: ['500', 'timeout'],
+  confirm: ['500', 'timeout', 'big', 'split'],
+  product: ['500', 'timeout', 'big', 'split'],
   token:   ['500', 'timeout'],
 };
 
@@ -56,10 +58,37 @@ function applyFault(res, route) {
   return false;
 }
 
+// Send a successful JSON response, shaped by the response modes 'big' / 'split'
+// (applyFault() does not handle them: the request itself succeeds).
+// 'big' pads the JSON so the terminal's module returns it in several frames;
+// 'split' sends the HTTP header first, so the module may hold only the header
+// when the terminal starts reading.
+function sendResponse(res, route, obj) {
+  const mode = faults[route];
+
+  if (mode === 'big') {
+    obj = { ...obj, _pad: 'x'.repeat(BIG_PAD_LEN) };
+  }
+
+  if (mode === 'split') {
+    const body = JSON.stringify(obj);
+    res.status(200)
+      .set('Content-Type', 'application/json; charset=utf-8')
+      .set('Content-Length', Buffer.byteLength(body));
+    res.flushHeaders();
+    setTimeout(() => {
+      try { res.end(body); } catch (_) {}
+    }, SPLIT_BODY_DELAY_MS);
+    return;
+  }
+
+  res.json(obj);
+}
+
 function getFaults() {
   return Object.fromEntries(
     Object.keys(ROUTE_CONFIG).map(r => [r, faults[r] || null])
   );
 }
 
-module.exports = { setFault, applyFault, getFaults, ROUTE_CONFIG };
+module.exports = { setFault, applyFault, sendResponse, getFaults, ROUTE_CONFIG };

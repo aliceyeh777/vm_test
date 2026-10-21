@@ -51,7 +51,7 @@ router.post('/', (req, res) => {
   logApi(imei, 'confirm', req.path, body, response, 200);
   logTransaction(imei, paymentId, 'confirm', body.price || 0, 'success');
   console.log(`[HTTPS] confirm OK  ${imei}  payment_id=${paymentId}`);
-  res.json(response);
+  fi.sendResponse(res, 'confirm', response);
 });
 
 module.exports = router;

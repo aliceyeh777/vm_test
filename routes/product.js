@@ -25,7 +25,7 @@ router.post('/', (req, res) => {
   const response = { payment_id: paymentId, press_count: -1 };
   logApi(imei, 'product', req.path, body, response, 200);
   console.log(`[HTTPS] product  ${imei}  payment_id=${paymentId}  col=${column}  price=${price}`);
-  res.json(response);
+  fi.sendResponse(res, 'product', response);
 
   // Notify browser via SSE
   const sseEmit = req.app.locals.sseEmit;
