@@ -74,7 +74,8 @@ function sendResponse(res, route, obj) {
     const body = JSON.stringify(obj);
     res.status(200)
       .set('Content-Type', 'application/json; charset=utf-8')
-      .set('Content-Length', Buffer.byteLength(body));
+      .set('Content-Length', Buffer.byteLength(body))
+      .set('X-Accel-Buffering', 'no');	// nginx would otherwise hold the header until the body arrives
     res.flushHeaders();
     setTimeout(() => {
       try { res.end(body); } catch (_) {}
