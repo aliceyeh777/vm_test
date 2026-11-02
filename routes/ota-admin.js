@@ -10,6 +10,7 @@ const {
 } = require('../db');
 const wsHandler = require('../ws/handler');
 const otaDownload = require('./ota-download');
+const ota = require('./ota');
 
 const router = Router();
 
@@ -155,12 +156,23 @@ router.post('/throttle', (req, res) => {
   res.json({ ok: true, bytes_per_sec: otaDownload.getThrottle() });
 });
 
+// ─── POST /ctrl/ota/url  { host, length } ────────────────────────────────────
+// Offer the download URL like the real cloud's S3 one: on another host (e.g.
+// https://147-182-172-24.sslip.io) and padded to length characters. {} = off.
+router.post('/url', (req, res) => {
+  const { host, length } = req.body || {};
+  ota.setUrlShape(host, length);
+  console.log(`[OTA] download URL shape = ${JSON.stringify(ota.getUrlShape())}`);
+  res.json({ ok: true, url_shape: ota.getUrlShape() });
+});
+
 // ─── GET /ctrl/ota/status ────────────────────────────────────────────────────
 router.get('/status', (_req, res) => {
   res.json({
     files: listOtaFiles().map(fileToJson),
     targets: listOtaTargets(),
     throttle_bytes_per_sec: otaDownload.getThrottle(),
+    url_shape: ota.getUrlShape(),
   });
 });
 

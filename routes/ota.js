@@ -11,6 +11,24 @@ function baseUrl(req) {
   return (process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
 }
 
+// Shape of the offered download URL (test aid). The real cloud hands out S3
+// presigned URLs: another host and about 380 characters. host replaces the
+// scheme+host part (e.g. https://147-182-172-24.sslip.io), length pads the URL
+// with a query the download route ignores. Both off by default.
+let urlShape = { host: '', length: 0 };
+function setUrlShape(host, length) {
+  urlShape = { host: String(host || '').replace(/\/+$/, ''), length: Math.max(0, Number(length) || 0) };
+}
+function getUrlShape() { return urlShape; }
+function shapeUrl(url) {
+  let out = urlShape.host ? url.replace(/^https?:\/\/[^/]+/, urlShape.host) : url;
+  const pad = '?x-bench-pad=';
+  if (urlShape.length >= out.length + pad.length) {
+    out += pad + 'a'.repeat(urlShape.length - out.length - pad.length);
+  }
+  return out;
+}
+
 // States that mean "we already handed this OTA to the device", so a matching
 // version report now proves the OTA actually applied (vs. device was already
 // on the target version before we armed anything).
@@ -60,7 +78,7 @@ router.post('/', (req, res) => {
         });
       } else {
         // Offer the update for this transport.
-        const url = `${baseUrl(req)}/ota/download/${file.id}`;
+        const url = shapeUrl(`${baseUrl(req)}/ota/download/${file.id}`);
         if (target.transport === 'lte') {
           response.lte_needs_update = true;
           response.lte_url = url;
@@ -87,3 +105,5 @@ router.post('/', (req, res) => {
 });
 
 module.exports = router;
+module.exports.setUrlShape = setUrlShape;
+module.exports.getUrlShape = getUrlShape;
